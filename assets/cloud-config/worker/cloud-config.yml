@@ -1,0 +1,204 @@
+#cloud-config
+
+hostname: "k8s-worker"
+
+coreos:
+  etcd2:
+    proxy: on
+    discovery: ${discovery_url}
+    listen-client-urls: http://0.0.0.0:2379
+  flannel:
+    interface: $private_ipv4
+    etcd_endpoints: http://127.0.0.1:2379
+  units:
+    - name: etcd2.service
+      command: start
+    - name: flanneld.service
+      command: start
+    - name: docker.service
+      command: start
+      drop-ins:
+        - name: 40-flannel.conf
+          content: |
+            [Unit]
+            Requires=flanneld.service
+            After=flanneld.service
+    - name: tls.service
+      command: start
+      content: |
+        [Unit]
+        Description=Generate TLS asset
+        [Service]
+        User=root
+        Group=root
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStartPre=/usr/bin/openssl genrsa -out /etc/kubernetes/ssl/worker-key.pem 2048
+        ExecStartPre=/usr/bin/openssl req -new -key /etc/kubernetes/ssl/worker-key.pem -out /etc/kubernetes/ssl/worker.csr -subj "/CN=kube-worker-${COUNTER}" -config /etc/kubernetes/ssl/api-client.cnf
+        ExecStartPre=/usr/bin/openssl x509 -req -in /etc/kubernetes/ssl/worker.csr -CA /etc/kubernetes/ssl/ca.pem -CAkey /etc/kubernetes/ssl/ca-key.pem -CAcreateserial -out /etc/kubernetes/ssl/worker.pem -days 10000 -extensions v3_req -extfile /etc/kubernetes/ssl/api-client.cnf
+        ExecStartPre=/usr/bin/chmod 600 /etc/kubernetes/ssl/worker-key.pem
+        ExecStartPre=/usr/bin/chown root /etc/kubernetes/ssl/worker-key.pem
+        ExecStartPre=/usr/bin/rm /etc/kubernetes/ssl/ca-key.pem
+        ExecStartPre=/usr/bin/rm /etc/kubernetes/ssl/ca.srl
+        ExecStartPre=/usr/bin/rm /etc/kubernetes/ssl/api-client.cnf
+        ExecStartPre=/usr/bin/rm /etc/kubernetes/ssl/worker.csr
+        ExecStart=/usr/bin/echo "Done creating tls assets."
+    - name: kubelet.service
+      command: start
+      content: |
+        [Unit]
+        Requires=docker.service tls.service
+        After=docker.service tls.service
+        [Service]
+        ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/manifests
+        ExecStartPre=/usr/bin/mkdir -p /var/log/containers
+
+        Environment=KUBELET_VERSION=v1.4.3_coreos.0
+        Environment="RKT_OPTS=--volume var-log,kind=host,source=/var/log \
+          --mount volume=var-log,target=/var/log \
+          --volume dns,kind=host,source=/etc/resolv.conf \
+          --mount volume=dns,target=/etc/resolv.conf"
+
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+          --api-servers=https://${MASTER_HOST} \
+          --network-plugin-dir=/etc/kubernetes/cni/net.d \
+          --network-plugin=cni \
+          --register-node=true \
+          --allow-privileged=true \
+          --config=/etc/kubernetes/manifests \
+          --hostname-override=$private_ipv4 \
+          --cluster-dns=10.3.0.10 \
+          --cluster-domain=cluster.local \
+          --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
+          --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
+          --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem
+        Restart=always
+        RestartSec=10
+        [Install]
+        WantedBy=multi-user.target
+    - name: calico-node.service
+      command: start
+      content: |
+        [Unit]
+        Description=Calico node for network policy
+        Requires=network-online.target flanneld.service
+        After=network-online.target flanneld.service
+
+        [Service]
+        Slice=machine.slice
+        Environment=CALICO_DISABLE_FILE_LOGGING=true
+        Environment=HOSTNAME=$private_ipv4
+        Environment=IP=$private_ipv4
+        Environment=FELIX_FELIXHOSTNAME=$private_ipv4
+        Environment=CALICO_NETWORKING=false
+        Environment=NO_DEFAULT_POOLS=true
+        Environment=ETCD_ENDPOINTS=http://127.0.0.1:2379
+        ExecStart=/usr/bin/rkt run --inherit-env --stage1-from-dir=stage1-fly.aci \
+        --volume=modules,kind=host,source=/lib/modules,readOnly=false \
+        --mount=volume=modules,target=/lib/modules \
+        --volume=dns,kind=host,source=/etc/resolv.conf,readOnly=true \
+        --mount=volume=dns,target=/etc/resolv.conf \
+        --trust-keys-from-https quay.io/calico/node:v0.19.0
+        KillMode=mixed
+        Restart=always
+        TimeoutStartSec=0
+
+        [Install]
+        WantedBy=multi-user.target
+
+write_files:
+  # hack: the splitting and joining serves to move content 6 spaces to the right
+  # so it complies with yaml standard
+  - path: "/etc/kubernetes/ssl/ca.pem"
+    content: |
+      ${join("\n      ", split("\n", tls-root-ca))}
+
+  - path: "/etc/kubernetes/ssl/ca-key.pem"
+    content: |
+      ${join("\n      ", split("\n", tls-root-ca-key))}
+
+  - path: "/etc/kubernetes/ssl/api-client.cnf"
+    content: |
+      ${join("\n      ", split("\n", tls-client-conf))}
+
+
+  - path: "/etc/kubernetes/manifests/kube-proxy.yaml"
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-proxy
+        namespace: kube-system
+      spec:
+        hostNetwork: true
+        containers:
+        - name: kube-proxy
+          image: quay.io/coreos/hyperkube:v1.4.3_coreos.0
+          command:
+          - /hyperkube
+          - proxy
+          - --master=https://${MASTER_HOST}
+          - --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml
+          - --proxy-mode=iptables
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /etc/ssl/certs
+              name: "ssl-certs"
+            - mountPath: /etc/kubernetes/worker-kubeconfig.yaml
+              name: "kubeconfig"
+              readOnly: true
+            - mountPath: /etc/kubernetes/ssl
+              name: "etc-kube-ssl"
+              readOnly: true
+        volumes:
+          - name: "ssl-certs"
+            hostPath:
+              path: "/usr/share/ca-certificates"
+          - name: "kubeconfig"
+            hostPath:
+              path: "/etc/kubernetes/worker-kubeconfig.yaml"
+          - name: "etc-kube-ssl"
+            hostPath:
+              path: "/etc/kubernetes/ssl"
+
+  - path: "/etc/kubernetes/worker-kubeconfig.yaml"
+    content: |
+      apiVersion: v1
+      kind: Config
+      clusters:
+      - name: local
+        cluster:
+          certificate-authority: /etc/kubernetes/ssl/ca.pem
+      users:
+      - name: kubelet
+        user:
+          client-certificate: /etc/kubernetes/ssl/worker.pem
+          client-key: /etc/kubernetes/ssl/worker-key.pem
+      contexts:
+      - context:
+          cluster: local
+          user: kubelet
+        name: kubelet-context
+      current-context: kubelet-context
+
+
+  - path: "/etc/kubernetes/cni/net.d/10-calico.conf"
+    content: |
+      {
+          "name": "calico",
+          "type": "flannel",
+          "delegate": {
+              "type": "calico",
+              "etcd_endpoints": "http://127.0.0.1:2379",
+              "log_level": "none",
+              "log_level_stderr": "info",
+              "hostname": "$private_ipv4",
+              "policy": {
+                  "type": "k8s",
+                  "k8s_api_root": "https://${MASTER_HOST}:443/api/v1/",
+                  "k8s_client_key": "/etc/kubernetes/ssl/worker-key.pem",
+                  "k8s_client_certificate": "/etc/kubernetes/ssl/worker.pem"
+             }
+          }
+      }
