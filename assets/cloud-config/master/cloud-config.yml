@@ -7,12 +7,15 @@ coreos:
     proxy: on
     discovery: ${discovery_url}
     listen-client-urls: http://0.0.0.0:2379
+
   flannel:
     interface: $private_ipv4
     etcd_endpoints: http://127.0.0.1:2379
+
   units:
     - name: etcd2.service
       command: start
+
     - name: flanneld.service
       command: start
       drop-ins:
@@ -28,6 +31,7 @@ coreos:
                     "Type": "vxlan"         \
                   }                         \
                 }'
+
     - name: docker.service
       command: start
       drop-ins:
@@ -38,6 +42,7 @@ coreos:
             After=flanneld.service
             [Service]
             EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
+
     - name: kubelet.service
       command: start
       content: |
@@ -70,6 +75,22 @@ coreos:
         Restart=always
         RestartSec=10
 
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: namespace.service
+      command: start
+      content: |
+        [Unit]
+        Description=Generate namespaces
+        [Service]
+        User=root
+        Group=root
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStartPre=/opt/bin/waitformaster
+        ExecStartPre=/usr/bin/curl -H "Content-Type: application/json" -XPOST -d'{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"kube-system"}}' "http://127.0.0.1:8080/api/v1/namespaces"
+        ExecStart=/usr/bin/echo "Done creating namespaces."
         [Install]
         WantedBy=multi-user.target
 
@@ -261,3 +282,11 @@ write_files:
     content: |
       DOCKER_OPT_BIP=""
       DOCKER_OPT_IPMASQ=""
+
+  - path: /opt/bin/waitformaster
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      until curl -o /dev/null -sIf http://127.0.0.1:8080/; do \
+        sleep 1 && echo .;
+      done;
