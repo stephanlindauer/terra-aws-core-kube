@@ -8,8 +8,7 @@ Contributions are more then welcome.
 ## Setup-Instructions
 
 ### Custom settings
-- Alter contents of `_variables-aws-custom.tf` to your own preferences.
-- Enter your AWS credentials into `terraform.tfvars`.
+- Rename `_variables-aws-custom.tf.sample` to `_variables-aws-custom.tf` and put in your own settings.
 
 ### Get kubectl
 `curl -O https://storage.googleapis.com/kubernetes-release/release/v1.4.3/bin/linux/amd64/kubectl`

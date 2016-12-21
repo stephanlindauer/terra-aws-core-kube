@@ -2,3 +2,6 @@ terraform.tfstate
 terraform.tfstate.backup
 kubectl
 ssh/
+assets/tls/*
+assets/discovery/*
+_variables-vars-custom.tf
