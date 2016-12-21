@@ -1,11 +1,3 @@
-variable "access_key" {
-  description = "AWS access key"
-}
-
-variable "secret_key" {
-  description = "AWS secret access key"
-}
-
 variable "amis" {
   default = {
     eu-central-1   = "ami-f603c599"
