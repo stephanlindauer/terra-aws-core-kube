@@ -38,7 +38,7 @@ resource "aws_autoscaling_group" "worker" {
   health_check_type         = "EC2"
   force_delete              = true
   launch_configuration      = "${ aws_launch_configuration.worker.name }"
-  max_size                  = "5"
+  max_size                  = "8"
   min_size                  = "2"
   vpc_zone_identifier       = ["${aws_subnet.k8s-public.id}"]
 
@@ -49,28 +49,50 @@ resource "aws_autoscaling_group" "worker" {
   }
 }
 
-resource "aws_autoscaling_policy" "bat" {
-  name                   = "foobar3-terraform-test"
+resource "aws_autoscaling_policy" "scale_up" {
+  name                   = "scale_up"
   scaling_adjustment     = 1
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 300
   autoscaling_group_name = "${aws_autoscaling_group.worker.name}"
 }
 
-resource "aws_cloudwatch_metric_alarm" "bat" {
-  alarm_name          = "terraform-test-foobar5"
+resource "aws_autoscaling_policy" "scale_down" {
+  name                   = "scale_down"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300
+  autoscaling_group_name = "${aws_autoscaling_group.worker.name}"
+}
+
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name          = "high_cpu"
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = "2"
+  threshold           = "50"
+  statistic           = "Average"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
-  period              = "120"
-  statistic           = "Average"
-  threshold           = "20"
+  evaluation_periods  = "2"
+  period              = "60"
+  alarm_actions       = ["${aws_autoscaling_policy.scale_up.arn  }"]
 
   dimensions {
     AutoScalingGroupName = "${aws_autoscaling_group.worker.name}"
   }
+}
 
-  alarm_description = "This metric monitor ec2 cpu utilization"
-  alarm_actions     = ["${aws_autoscaling_policy.bat.arn  }"]
+resource "aws_cloudwatch_metric_alarm" "low_cpu" {
+  alarm_name          = "low_cpu"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  threshold           = "20"
+  statistic           = "Average"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  evaluation_periods  = "2"
+  period              = "60"
+  alarm_actions       = ["${aws_autoscaling_policy.scale_down.arn  }"]
+
+  dimensions {
+    AutoScalingGroupName = "${aws_autoscaling_group.worker.name}"
+  }
 }
