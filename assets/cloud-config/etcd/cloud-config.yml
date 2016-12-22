@@ -9,10 +9,11 @@ coreos:
     listen-client-urls: http://0.0.0.0:2379
     initial-advertise-peer-urls: http://$private_ipv4:2380
     listen-peer-urls: http://$private_ipv4:2380
-  fleet:
-    metadata: "role=services,cabinet=one"
+  update:
+    reboot-strategy: etcd-lock
+    group : "etcd"
+  locksmith:
+    endpoint: http://127.0.0.1:2379
   units:
     - name: etcd2.service
-      command: start
-    - name: fleet.service
       command: start

@@ -7,6 +7,11 @@ coreos:
     proxy: on
     discovery: ${discovery_url}
     listen-client-urls: http://0.0.0.0:2379
+  update:
+    reboot-strategy: etcd-lock
+    group : "worker"
+  locksmith:
+    endpoint: http://127.0.0.1:2379
   flannel:
     interface: $private_ipv4
     etcd_endpoints: http://127.0.0.1:2379
