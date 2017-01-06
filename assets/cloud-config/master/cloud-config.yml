@@ -70,7 +70,9 @@ coreos:
           --pod-manifest-path=/etc/kubernetes/manifests \
           --hostname-override=$private_ipv4 \
           --cluster_dns=10.3.0.10 \
-          --cluster_domain=cluster.local
+          --cluster_domain=cluster.local \
+          --node-labels="nodeRole=master" \
+          --cloud-provider=aws
         ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         Restart=always
         RestartSec=10
@@ -214,6 +216,7 @@ write_files:
           - --leader-elect=true
           - --service-account-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
           - --root-ca-file=/etc/kubernetes/ssl/ca.pem
+          - --cloud-provider=aws
           resources:
             requests:
               cpu: 200m
@@ -288,5 +291,5 @@ write_files:
     content: |
       #!/bin/bash
       until curl -o /dev/null -sIf http://127.0.0.1:8080/; do \
-        sleep 1 && echo .;
+        sleep 1 && echo -n .;
       done;
