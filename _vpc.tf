@@ -8,6 +8,7 @@ resource "aws_vpc" "k8s-production" {
 }
 
 resource "aws_subnet" "k8s-public" {
+  availability_zone       = "${var.region}b"
   vpc_id                  = "${aws_vpc.k8s-production.id}"
   cidr_block              = "${var.subnet_cidr}"
   map_public_ip_on_launch = true

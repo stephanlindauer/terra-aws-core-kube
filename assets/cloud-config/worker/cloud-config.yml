@@ -102,7 +102,9 @@ coreos:
           --cluster-domain=cluster.local \
           --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
           --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
-          --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem
+          --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \
+          --node-labels="nodeRole=${node_label}" \
+          --cloud-provider=aws
         ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         Restart=always
         RestartSec=10
@@ -163,7 +165,6 @@ write_files:
           hostPath:
             path: "/etc/kubernetes/ssl"
 
-
   - path: "/etc/kubernetes/worker-kubeconfig.yaml"
     content: |
       apiVersion: v1
@@ -204,5 +205,5 @@ write_files:
     content: |
       #!/bin/bash
       until curl -o /dev/null -sIf --cacert /etc/kubernetes/ssl/ca.pem --cert /etc/kubernetes/ssl/worker.pem --key /etc/kubernetes/ssl/worker-key.pem https://${MASTER_HOST}/; do \
-        sleep 1 && echo .;
+        sleep 1 && echo -n .;
       done;
