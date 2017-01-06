@@ -17,6 +17,9 @@ resource "aws_instance" "k8s-etcd" {
   private_ip    = "${var.subnet_prefix}${var.etcd_first_ip_suffix+count.index}"
   user_data     = "${data.template_file.k8s-etcd.rendered}"
 
+  /*TODO*/
+  associate_public_ip_address = true
+
   tags {
     Name = "k8s-etcd-${count.index}"
   }

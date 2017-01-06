@@ -11,13 +11,19 @@ data "template_file" "k8s-worker" {
     tls-client-conf = "${file("assets/tls/api-client.cnf")}"
 
     MASTER_HOST = "${ aws_instance.k8s-master.private_ip }"
+
+    node_label = "worker"
   }
 }
 
 resource "aws_launch_configuration" "worker" {
-  image_id      = "${lookup(var.amis, var.region)}"
-  instance_type = "t2.medium"
-  key_name      = "${var.aws_key_name}"
+  image_id             = "${lookup(var.amis, var.region)}"
+  instance_type        = "t2.medium"
+  key_name             = "${var.aws_key_name}"
+  iam_instance_profile = "${aws_iam_instance_profile.worker_instance_profile.id}"
+
+  /*TODO*/
+  associate_public_ip_address = true
 
   root_block_device {
     volume_size = 16
@@ -33,13 +39,13 @@ resource "aws_launch_configuration" "worker" {
 resource "aws_autoscaling_group" "worker" {
   name = "k8s-aws_autoscaling_group"
 
-  desired_capacity          = "2"
+  desired_capacity          = "1"
   health_check_grace_period = 60
   health_check_type         = "EC2"
   force_delete              = true
   launch_configuration      = "${ aws_launch_configuration.worker.name }"
   max_size                  = "8"
-  min_size                  = "2"
+  min_size                  = "1"
   vpc_zone_identifier       = ["${aws_subnet.k8s-public.id}"]
 
   tag {

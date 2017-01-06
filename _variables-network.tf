@@ -14,6 +14,14 @@ variable "master_ip_suffix" {
   default = "9"
 }
 
-variable "worker_first_ip_suffix" {
+variable "ingress_ip_suffix" {
   default = "10"
+}
+
+variable "admin_ip_suffix" {
+  default = "11"
+}
+
+variable "worker_first_ip_suffix" {
+  default = "11"
 }

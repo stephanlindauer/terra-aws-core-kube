@@ -13,13 +13,15 @@ data "template_file" "k8s-master" {
 }
 
 resource "aws_instance" "k8s-master" {
-  count         = "1"
-  ami           = "${lookup(var.amis, var.region)}"
-  instance_type = "t2.medium"
-  subnet_id     = "${aws_subnet.k8s-public.id}"
-  key_name      = "${var.aws_key_name}"
-  private_ip    = "${var.subnet_prefix}${var.master_ip_suffix}"
-  user_data     = "${data.template_file.k8s-master.rendered}"
+  count                       = "1"
+  ami                         = "${lookup(var.amis, var.region)}"
+  instance_type               = "t2.medium"
+  subnet_id                   = "${aws_subnet.k8s-public.id}"
+  key_name                    = "${var.aws_key_name}"
+  private_ip                  = "${var.subnet_prefix}${var.master_ip_suffix}"
+  user_data                   = "${data.template_file.k8s-master.rendered}"
+  associate_public_ip_address = true
+  iam_instance_profile        = "${aws_iam_instance_profile.master_instance_profile.id}"
 
   tags {
     Name = "k8s-master"
